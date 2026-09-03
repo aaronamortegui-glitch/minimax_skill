@@ -69,8 +69,8 @@ def main():
     try:
         pid = json.loads(urllib.request.urlopen(req).read().decode())["prompt_id"]
     except urllib.error.HTTPError as e:
-        raise SystemExit("no valido:\n" + e.read().decode()[:2000])
-    print("rastreando (umbral %.2f)..." % a.det_thr)
+        raise SystemExit("invalid graph:\n" + e.read().decode()[:2000])
+    print("tracking (threshold %.2f)..." % a.det_thr)
     t0 = time.time()
     while True:
         time.sleep(8)
@@ -81,7 +81,7 @@ def main():
                 for m in st.get("messages", []):
                     if "error" in str(m[0]): print("ERROR:", json.dumps(m[1])[:600])
                 raise SystemExit(1)
-            print("tracking listo en %.0f s\n" % (time.time() - t0))
+            print("tracking done in %.0f s\n" % (time.time() - t0))
             break
 
     import av
@@ -92,7 +92,7 @@ def main():
         if i > max(a.frames): break
 
     rows = []
-    print("%-6s %s" % ("objeto", "  ".join("f%-7d" % f for f in a.frames)))
+    print("%-6s %s" % ("object", "  ".join("f%-7d" % f for f in a.frames)))
     for idx in idxs:
         row, cov = [], []
         for fr in a.frames:
@@ -106,9 +106,9 @@ def main():
             tint = Image.new("RGB", base.size, (255, 40, 40))
             comp = Image.composite(ImageChops.blend(base, tint, 0.6), base, m)
             comp.thumbnail((260, 260)); row.append(comp)
-        estable = "ESTABLE" if all(v > 2.0 for v in cov) else "intermitente" if any(v > 2.0 for v in cov) else "vacio"
-        print("%-6s %s  -> %s" % (idx, "  ".join("%6.1f%% " % v for v in cov), estable))
-        rows.append((idx, row, cov, estable))
+        state = "STABLE" if all(v > 2.0 for v in cov) else "flickering" if any(v > 2.0 for v in cov) else "empty"
+        print("%-6s %s  -> %s" % (idx, "  ".join("%6.1f%% " % v for v in cov), state))
+        rows.append((idx, row, cov, state))
 
     imgs = [im for _, r, _, _ in rows for im in r if im]
     if imgs:
@@ -124,7 +124,7 @@ def main():
             y += h + 20
         out = os.path.splitext(os.path.abspath(a.video))[0] + "_tracks.png"
         sh.thumbnail((1400, 1400)); sh.save(out)
-        print("\nmapa visual -> %s" % out)
+        print("\nvisual map -> %s" % out)
     try:
         os.remove(os.path.join(INPUT, stage))
     except OSError:

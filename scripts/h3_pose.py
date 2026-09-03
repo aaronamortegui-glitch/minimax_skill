@@ -59,11 +59,11 @@ def build(vid, n, w, h, prompt, imgs, steps, seed, strength, start_pct, end_pct,
         "10": {"class_type": "VHS_LoadVideo",
                "inputs": {"video": vid, "force_rate": 0, "custom_width": 0, "custom_height": 0,
                           "frame_load_cap": n, "skip_first_frames": 0, "select_every_nth": 1}},
-        # esqueleto: cuerpo + manos + cara
+        # skeleton: body + hands + face
         "11": {"class_type": "DWPreprocessor",
                "inputs": {"image": ["10", 0], "detect_hand": "enable", "detect_body": "enable",
                           "detect_face": "enable", "resolution": pose_res}},
-        # el esqueleto DEBE ir al tamano exacto de la generacion
+        # the skeleton MUST match the generation size exactly
         "11c": {"class_type": "ImageScale",
                 "inputs": {"image": ["11", 0], "width": w, "height": h,
                            "upscale_method": "lanczos", "crop": "disabled"}},
@@ -80,7 +80,7 @@ def build(vid, n, w, h, prompt, imgs, steps, seed, strength, start_pct, end_pct,
         g["44"] = {"class_type": "LoraLoaderModelOnly",
                    "inputs": {"model": src, "lora_name": LORA, "strength_model": 1.0}}
         src = ["44", 0]
-    # el ControlNet parchea el modelo con el video de esqueleto
+    # the ControlNet patches the model with the skeleton video
     g["47"] = {"class_type": "H3FunControlApply",
                "inputs": {"model": src, "control_net": ["46", 0], "vae": ["40", 0],
                           "control_video": ["11c", 0], "strength": strength,
@@ -115,21 +115,21 @@ def build(vid, n, w, h, prompt, imgs, steps, seed, strength, start_pct, end_pct,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", required=True, help="video que aporta el MOVIMIENTO")
-    ap.add_argument("--img", nargs="+", required=True, help="referencias del personaje")
+    ap.add_argument("--video", required=True, help="video that supplies the MOTION")
+    ap.add_argument("--img", nargs="+", required=True, help="references for the character")
     ap.add_argument("-p", "--prompt-file", required=True)
     ap.add_argument("--seconds", type=float, default=5.17)
     ap.add_argument("--vertical", action="store_true")
     ap.add_argument("--steps", type=int, default=8)
     ap.add_argument("--seed", type=int, default=2)
-    ap.add_argument("--strength", type=float, default=1.0, help="fuerza del ControlNet")
+    ap.add_argument("--strength", type=float, default=1.0, help="ControlNet strength, up to 2.0")
     ap.add_argument("--start-pct", type=float, default=0.0)
     ap.add_argument("--end-pct", type=float, default=1.0)
     ap.add_argument("--pose-res", type=int, default=768)
-    ap.add_argument("--quality", action="store_true", help="sin LoRA turbo, 20 pasos")
+    ap.add_argument("--quality", action="store_true", help="no turbo LoRA, 20 steps")
     ap.add_argument("--ref-size", choices=["match", "max"], default="max")
-    ap.add_argument("--keep-audio", action="store_true", help="usar el audio del video fuente")
-    ap.add_argument("--save-pose", action="store_true", help="guardar tambien el esqueleto")
+    ap.add_argument("--keep-audio", action="store_true", help="use the source video's audio")
+    ap.add_argument("--save-pose", action="store_true", help="also save the skeleton")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("-o", "--out")
     a = ap.parse_args()
@@ -139,7 +139,7 @@ def main():
     steps = 20 if a.quality else a.steps
 
     vid = "pose_src.mp4"
-    print("fuente -> 24 fps, %d frames (%.2f s)" % (n, n / 24.0))
+    print("source -> 24 fps, %d frames (%.2f s)" % (n, n / 24.0))
     ffmpeg("-i", a.video, "-r", "24", "-frames:v", str(n), "-c:v", "libx264", "-crf", "14",
            "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
            os.path.join(INPUT, vid))
@@ -160,10 +160,10 @@ def main():
     try:
         r = json.loads(post("/prompt", {"prompt": g, "client_id": str(uuid.uuid4())}))
     except urllib.error.HTTPError as e:
-        print("GRAFO NO VALIDO:"); print(e.read().decode()[:3000]); sys.exit(1)
-    print("grafo valido:", r["prompt_id"])
+        print("INVALID GRAPH:"); print(e.read().decode()[:3000]); sys.exit(1)
+    print("graph valid:", r["prompt_id"])
     if a.dry_run:
-        post("/queue", {"delete": [r["prompt_id"]]}); print("dry-run, nada generado."); return
+        post("/queue", {"delete": [r["prompt_id"]]}); print("dry-run, nothing generated."); return
 
     t0 = time.time()
     while True:
@@ -181,10 +181,10 @@ def main():
             dst = a.out or os.path.join(os.path.dirname(os.path.abspath(a.video)), "pose_resultado.mp4")
             ffmpeg("-i", src, "-c:v", "libx264", "-crf", "15", "-preset", "slow",
                    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", dst)
-            print("listo en %.1f min -> %s" % ((time.time() - t0) / 60.0, dst))
+            print("done in %.1f min -> %s" % ((time.time() - t0) / 60.0, dst))
             if a.save_pose and "16" in v.get("outputs", {}):
                 so = v["outputs"]["16"]["images"][0]
-                print("esqueleto -> %s" % os.path.join(OUTPUT, so.get("subfolder",""), so["filename"]))
+                print("skeleton -> %s" % os.path.join(OUTPUT, so.get("subfolder",""), so["filename"]))
             return
         print("   ... %.1f min" % ((time.time() - t0) / 60.0), end="\r", flush=True)
 

@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-h3_swap_long.py - reemplaza una o varias personas en un video LARGO.
+h3_swap_long.py - replace one or more people in a LONG video.
 
-Trocea el video en segmentos que caben en VRAM, corre h3_swap.py sobre cada trozo
-(una pasada por sujeto, encadenadas), y pega todo al final. Se puede reanudar: los
-trozos ya hechos se saltan.
+Splits the video into chunks that fit in VRAM, runs h3_swap.py over each chunk
+(one pass per subject, chained), and joins them at the end. Resumable: chunks
+already done are skipped.
 
-Config en un JSON:
+Chunking introduces seams, so prefer a single pass when the clip fits. Config
+lives in a JSON file:
 
 {
   "video": "C:/.../video_to_test.mp4",
@@ -23,9 +24,9 @@ Config en un JSON:
   ]
 }
 
-Uso:
+Usage:
   python h3_swap_long.py config.json
-  python h3_swap_long.py config.json --only-chunk 3     # rehacer solo el trozo 3
+  python h3_swap_long.py config.json --only-chunk 3     # redo only chunk 3
 """
 import argparse, json, os, subprocess, sys
 
@@ -37,7 +38,7 @@ SWAP = os.path.join(HERE, "h3_swap.py")
 def sh(*a):
     r = subprocess.run(list(a))
     if r.returncode != 0:
-        raise SystemExit("fallo: %s" % " ".join(str(x) for x in a[:4]))
+        raise SystemExit("failed: %s" % " ".join(str(x) for x in a[:4]))
 
 
 def probe_duration(p):
@@ -49,14 +50,14 @@ def probe_duration(p):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("config")
-    ap.add_argument("--only-chunk", type=int, help="rehacer un solo trozo (1-based)")
+    ap.add_argument("--only-chunk", type=int, help="redo a single chunk (1-based)")
     ap.add_argument("--no-concat", action="store_true")
     a = ap.parse_args()
 
     cfg = json.load(open(a.config, encoding="utf-8"))
     video = cfg["video"]
     base = os.path.dirname(os.path.abspath(video))
-    work = os.path.join(base, "swap_trozos")
+    work = os.path.join(base, "swap_chunks")
     os.makedirs(work, exist_ok=True)
 
     spc = float(cfg.get("seconds_per_chunk", 5.17))
@@ -68,36 +69,36 @@ def main():
     subs = cfg["subjects"]
 
     print("video: %s" % video)
-    print("duracion: %.2f s -> %d trozos de %.2f s" % (dur, nchunks, spc))
-    print("sujetos: %s" % ", ".join(s["name"] for s in subs))
-    print("estimado: ~%d min (%d trozos x %d sujetos x ~8 min)\n"
+    print("duration: %.2f s -> %d chunks of %.2f s" % (dur, nchunks, spc))
+    print("subjects: %s" % ", ".join(s["name"] for s in subs))
+    print("estimate: ~%d min (%d chunks x %d subjects x ~8 min)\n"
           % (nchunks * len(subs) * 8, nchunks, len(subs)))
 
-    finales = []
+    finals = []
     for c in range(nchunks):
         idx = c + 1
-        final = os.path.join(work, "trozo_%02d_final.mp4" % idx)
-        finales.append(final)
+        final = os.path.join(work, "chunk_%02d_final.mp4" % idx)
+        finals.append(final)
         if a.only_chunk and idx != a.only_chunk:
             continue
         if os.path.exists(final) and not a.only_chunk:
-            print("[%d/%d] ya hecho, salto" % (idx, nchunks)); continue
+            print("[%d/%d] already done, skipping" % (idx, nchunks)); continue
 
-        # 1) cortar el trozo del original
-        src = os.path.join(work, "trozo_%02d_src.mp4" % idx)
+        # 1) cut the chunk out of the original
+        src = os.path.join(work, "chunk_%02d_src.mp4" % idx)
         vf = ["-vf", crop] if crop else []
-        print("[%d/%d] cortando desde %.2f s" % (idx, nchunks, c * spc))
+        print("[%d/%d] cutting from %.2f s" % (idx, nchunks, c * spc))
         sh("ffmpeg", "-y", "-v", "error", "-ss", str(c * spc), "-t", str(spc + 0.2),
            "-i", video, *vf, "-c:v", "libx264", "-crf", "12", "-preset", "medium",
            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", src)
 
-        # 2) una pasada por sujeto, encadenadas
+        # 2) one pass per subject, chained
         cur = src
         for s in subs:
-            out = os.path.join(work, "trozo_%02d_%s.mp4" % (idx, s["name"]))
+            out = os.path.join(work, "chunk_%02d_%s.mp4" % (idx, s["name"]))
             if os.path.exists(out):
-                print("   %s ya hecho, salto" % s["name"]); cur = out; continue
-            print("   pasada: %s" % s["name"])
+                print("   %s already done, skipping" % s["name"]); cur = out; continue
+            print("   pass: %s" % s["name"])
             cmd = [PY, SWAP, "--video", cur, "--detect", s["detect"],
                    "-p", s["prompt_file"], "--img"] + list(s["refs"]) + \
                   ["--seconds", str(spc), "--steps", str(steps), "--seed", str(seed),
@@ -117,20 +118,20 @@ def main():
 
     if a.no_concat:
         return
-    faltan = [f for f in finales if not os.path.exists(f)]
-    if faltan:
-        print("\nfaltan %d trozos, no pego todavia." % len(faltan)); return
+    missing = [f for f in finals if not os.path.exists(f)]
+    if missing:
+        print("\n%d chunks still missing, not joining yet." % len(missing)); return
 
-    lista = os.path.join(work, "lista.txt")
-    with open(lista, "w", encoding="utf-8") as f:
-        for p in finales:
+    listfile = os.path.join(work, "listfile.txt")
+    with open(listfile, "w", encoding="utf-8") as f:
+        for p in finals:
             f.write("file '%s'\n" % p.replace("\\", "/"))
-    out = os.path.join(base, "swap_COMPLETO.mp4")
-    print("pegando %d trozos..." % len(finales))
-    sh("ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", lista,
+    out = os.path.join(base, "swap_FULL.mp4")
+    print("joining %d chunks..." % len(finals))
+    sh("ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0", "-i", listfile,
        "-c:v", "libx264", "-crf", "15", "-preset", "slow", "-pix_fmt", "yuv420p",
        "-c:a", "aac", "-b:a", "192k", "-ar", "48000", out)
-    print("LISTO -> %s" % out)
+    print("DONE -> %s" % out)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ glance without playing it. Writes a PNG next to the video.
 
   python sheet.py video.mp4              # 8 frames
   python sheet.py video.mp4 --n 12       # 12 frames
-  python sheet.py video.mp4 --crop cara  # crop the upper area (faces)
+  python sheet.py video.mp4 --crop face  # crop the upper area (faces)
 """
 import argparse, os, sys
 
@@ -14,15 +14,15 @@ try:
     import av
     from PIL import Image, ImageDraw
 except ImportError:
-    sys.exit("Corre esto con el python del portable:\n"
+    sys.exit("Run this with the portable python:\n"
              "  ..\\python_embeded\\python.exe sheet.py video.mp4")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("video")
-    ap.add_argument("--n", type=int, default=8, help="cuantos frames")
-    ap.add_argument("--crop", choices=["no", "cara"], default="no")
+    ap.add_argument("--n", type=int, default=8, help="how many frames")
+    ap.add_argument("--crop", choices=["no", "face"], default="no")
     ap.add_argument("-o", "--out")
     a = ap.parse_args()
 
@@ -31,7 +31,7 @@ def main():
     total = vs.frames or 0
     has_audio = any(s.type == "audio" for s in c.streams)
     print("%dx%d | %d frames | %.2f fps | audio: %s"
-          % (vs.width, vs.height, total, float(vs.average_rate), "si" if has_audio else "NO"))
+          % (vs.width, vs.height, total, float(vs.average_rate), "yes" if has_audio else "NO"))
 
     want = [int(i * (total - 1) / max(1, a.n - 1)) for i in range(a.n)] if total else list(range(a.n))
     wset = set(want)
@@ -39,7 +39,7 @@ def main():
     for i, f in enumerate(c.decode(video=0)):
         if i in wset:
             im = f.to_image()
-            if a.crop == "cara":
+            if a.crop == "face":
                 W, H = im.size
                 im = im.crop((0, 0, W, int(H * 0.45)))
             im.thumbnail((260, 460))
@@ -48,7 +48,7 @@ def main():
             break
 
     if not imgs:
-        sys.exit("no pude decodificar frames")
+        sys.exit("could not decode any frames")
 
     W = sum(im.width for _, im in imgs)
     H = max(im.height for _, im in imgs)
@@ -63,7 +63,7 @@ def main():
 
     out = a.out or os.path.splitext(a.video)[0] + "_frames.png"
     sh.save(out)
-    print("tira guardada en: %s" % out)
+    print("strip saved to: %s" % out)
 
 
 if __name__ == "__main__":

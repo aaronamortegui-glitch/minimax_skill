@@ -25,7 +25,7 @@ takes its <Audio j> BEFORE its <Video k>), then standalone audios.
 
 import argparse, json, os, shutil, subprocess, sys, time, urllib.request, urllib.error, uuid
 
-# ---------------------------------------------------------------- rutas fijas
+# ------------------------------------------------------------------- paths
 PORTABLE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMFY    = os.path.join(PORTABLE, "ComfyUI")
 INPUT    = os.path.join(COMFY, "input")
@@ -46,9 +46,9 @@ VAE_VIDEO    = "minimax_h3_video_vae_fp16.safetensors"
 VAE_AUDIO    = "minimax_h3_audio_vae_fp32.safetensors"
 
 
-# ---------------------------------------------------------------- utilidades
+# --------------------------------------------------------------- utilities
 def frames_for(seconds):
-    """H3 solo acepta duraciones en la rejilla 17k+5 frames a 24 fps."""
+    """H3 only accepts durations on the 17k+5 frame grid at 24 fps."""
     target = round(seconds * 24)
     k = max(0, round((target - 5) / 17.0))
     return 17 * k + 5
@@ -77,7 +77,7 @@ def server_up():
 
 
 def stage_image(src):
-    """Copia una imagen al input de ComfyUI y devuelve su nombre."""
+    """Copy an image into ComfyUI's input folder and return its name."""
     name = "h3_" + os.path.splitext(os.path.basename(src))[0].replace(" ", "_") + ".png"
     from_ext = os.path.splitext(src)[1].lower()
     dst = os.path.join(INPUT, name)
@@ -89,7 +89,7 @@ def stage_image(src):
 
 
 def stage_audio(src, seconds=15):
-    """Recorta a `seconds`, normaliza y deja el audio en el input."""
+    """Trim to `seconds`, normalize, and drop the audio in the input folder."""
     name = "h3_" + os.path.splitext(os.path.basename(src))[0].replace(" ", "_") + ".mp3"
     dst = os.path.join(INPUT, name)
     ffmpeg("-t", str(seconds), "-i", src,
@@ -98,7 +98,7 @@ def stage_audio(src, seconds=15):
 
 
 def stage_video(src, seconds=5.17):
-    """H3 pide referencias de video a 24 fps y con frames = 17k+5."""
+    """H3 wants video references at 24 fps with frames = 17k+5."""
     n = frames_for(seconds)
     name = "h3_" + os.path.splitext(os.path.basename(src))[0].replace(" ", "_") + "_ref.mp4"
     dst = os.path.join(INPUT, name)
@@ -108,7 +108,7 @@ def stage_video(src, seconds=5.17):
     return name, n
 
 
-# ---------------------------------------------------------------- el grafo
+# --------------------------------------------------------------- the graph
 def build(prompt, w, h, frames, steps, seed, imgs, auds, vid, vid_audio,
           use_lora, ref_size):
     mode = "ref2va" if (imgs or auds or vid) else "fl2va"
@@ -124,7 +124,7 @@ def build(prompt, w, h, frames, steps, seed, imgs, auds, vid, vid_audio,
         "10": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
     }
 
-    # modelo -> (LoRA turbo opcional) -> SigmaShift
+    # model -> (optional turbo LoRA) -> SigmaShift
     model_src = ["1", 0]
     if use_lora:
         g["3"] = {"class_type": "LoraLoaderModelOnly",
@@ -133,7 +133,7 @@ def build(prompt, w, h, frames, steps, seed, imgs, auds, vid, vid_audio,
     g["16"] = {"class_type": "MiniMaxH3SigmaShift",
                "inputs": {"model": model_src, "shift_video": 12.0, "shift_audio": 3.0}}
 
-    # nodos de carga de referencias
+    # reference loader nodes
     cond_inputs = {"clip": ["2", 0], "vae": ["4", 0], "prompt": prompt,
                    "width": w, "height": h, "length": frames}
     nid = 20
@@ -197,8 +197,8 @@ def run_one(graph, label):
                 return None
             outs = v.get("outputs", {}).get("15", {}).get("images", [])
             if not outs:
-                print("  ERROR: no hubo salida"); return None
-            print("  [%s] listo en %.1f min" % (label, (time.time() - t0) / 60.0))
+                print("  ERROR: no output"); return None
+            print("  [%s] done in %.1f min" % (label, (time.time() - t0) / 60.0))
             return os.path.join(OUTPUT, outs[0].get("subfolder", ""), outs[0]["filename"])
         mins = (time.time() - t0) / 60.0
         if int(mins * 4) % 8 == 0:
@@ -206,7 +206,7 @@ def run_one(graph, label):
 
 
 def export(src, dst, w, h):
-    """Recorta al aspecto exacto (9:16 o 16:9) sin reescalar y reencoda limpio."""
+    """Crop to the exact aspect (9:16 or 16:9) without rescaling, then re-encode."""
     if h > w:   # vertical -> 9:16
         cw = (int(h * 9 / 16) // 2) * 2
         vf = "crop=%d:%d:%d:0" % (cw, h, (w - cw) // 2)
@@ -221,27 +221,27 @@ def export(src, dst, w, h):
 
 # ---------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="MiniMax H3 desde la linea de comandos")
-    ap.add_argument("-p", "--prompt-file", required=True, help="archivo .txt con el prompt")
-    ap.add_argument("--img", nargs="*", default=[], help="imagenes de referencia -> <Picture i>")
-    ap.add_argument("--audio", nargs="*", default=[], help="audios sueltos -> <Audio j>")
-    ap.add_argument("--video", help="video de referencia -> <Video 1>")
+    ap = argparse.ArgumentParser(description="MiniMax H3 from the command line")
+    ap.add_argument("-p", "--prompt-file", required=True, help=".txt file holding the prompt")
+    ap.add_argument("--img", nargs="*", default=[], help="reference images -> <Picture i>")
+    ap.add_argument("--audio", nargs="*", default=[], help="standalone audios -> <Audio j>")
+    ap.add_argument("--video", help="reference video -> <Video 1>")
     ap.add_argument("--video-audio", action="store_true",
-                    help="usar tambien la pista del video de referencia (toma <Audio 1>)")
+                    help="also use the reference video's soundtrack (takes <Audio 1>)")
     ap.add_argument("--video-seconds", type=float, default=5.17,
-                    help="cuanto recortar del video de referencia (default 5.17; mas = mucho mas lento)")
-    ap.add_argument("--seconds", type=float, default=5.17, help="duracion de salida")
-    ap.add_argument("--vertical", action="store_true", help="768x1344 en vez de 1344x768")
-    ap.add_argument("--steps", type=int, help="pasos (default 10 con turbo, 20 con --quality)")
-    ap.add_argument("--quality", action="store_true", help="sin LoRA turbo, 20 pasos")
+                    help="how much of the reference video to use (default 5.17; more = much slower)")
+    ap.add_argument("--seconds", type=float, default=5.17, help="output duration in seconds")
+    ap.add_argument("--vertical", action="store_true", help="768x1344 instead of 1344x768")
+    ap.add_argument("--steps", type=int, help="steps (default 10 with turbo, 20 with --quality)")
+    ap.add_argument("--quality", action="store_true", help="no turbo LoRA, 20 steps")
     ap.add_argument("--ref-size", choices=["match", "max"], default="match",
-                    help="'max' = mejor identidad, varias veces mas lento")
-    ap.add_argument("--seeds", nargs="*", type=int, default=[1], help="una o varias semillas")
-    ap.add_argument("-o", "--out", help="ruta del mp4 final (default: junto a los inputs)")
+                    help="'max' = better identity, several times slower")
+    ap.add_argument("--seeds", nargs="*", type=int, default=[1], help="one or more seeds")
+    ap.add_argument("-o", "--out", help="path of the final mp4 (default: next to the inputs)")
     a = ap.parse_args()
 
     if not server_up():
-        sys.exit("ComfyUI no responde en %s. Arranca START_COMFY_H3_FAST.bat primero." % SERVER)
+        sys.exit("ComfyUI is not answering on %s. Start START_COMFY_H3_FAST.bat first." % SERVER)
 
     prompt = open(a.prompt_file, encoding="utf-8").read()
     w, h = (768, 1344) if a.vertical else (1344, 768)
@@ -249,12 +249,12 @@ def main():
     use_lora = not a.quality
     steps = a.steps if a.steps else (20 if a.quality else 10)
 
-    print("preparando referencias...")
+    print("preparing references...")
     imgs = [stage_image(x) for x in a.img]
     auds = [stage_audio(x) for x in a.audio]
     vid = stage_video(a.video, a.video_seconds) if a.video else None
 
-    # destino por defecto: junto a los inputs
+    # default destination: next to the inputs
     if a.out:
         out_base = a.out
     else:
@@ -263,14 +263,14 @@ def main():
         stem = os.path.splitext(os.path.basename(a.prompt_file))[0]
         out_base = os.path.join(folder, stem + ".mp4")
 
-    print("modo:      %s" % ("ref2va" if (imgs or auds or vid) else "fl2va"))
-    print("salida:    %dx%d, %d frames (%.2f s a 24 fps)" % (w, h, frames, frames / 24.0))
-    print("muestreo:  %d pasos, LoRA turbo %s, ref_image_size=%s"
+    print("mode:      %s" % ("ref2va" if (imgs or auds or vid) else "fl2va"))
+    print("output:    %dx%d, %d frames (%.2f s at 24 fps)" % (w, h, frames, frames / 24.0))
+    print("sampling:  %d steps, turbo LoRA %s, ref_image_size=%s"
           % (steps, "ON" if use_lora else "OFF", a.ref_size))
-    print("refs:      %d imagenes, %d audios, video=%s%s"
-          % (len(imgs), len(auds), "si" if vid else "no",
-             " (+su pista)" if (vid and a.video_audio) else ""))
-    print("destino:   %s" % out_base)
+    print("refs:      %d images, %d audios, video=%s%s"
+          % (len(imgs), len(auds), "yes" if vid else "no",
+             " (+its soundtrack)" if (vid and a.video_audio) else ""))
+    print("output to: %s" % out_base)
     print()
 
     for i, seed in enumerate(a.seeds):
@@ -284,7 +284,7 @@ def main():
         export(src, dst, w, h)
         print("  -> %s" % dst)
 
-    print("\nlisto. Para revisar sin abrir los videos: python sheet.py <archivo.mp4>")
+    print("\ndone. To review without opening the videos: python sheet.py <file.mp4>")
 
 
 if __name__ == "__main__":
