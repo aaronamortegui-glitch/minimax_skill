@@ -157,22 +157,109 @@ the graph needs `["10", 2]` for `NKDAVLatent`.
 The cloned frames never reach the final file. Same idea works with frames borrowed from the
 next shot when padding is not an option — generate long, trim back.
 
+## The 124-frame ceiling — the most expensive failure of all
+
+**Above roughly 124 frames the replacement silently does not apply.** The shot comes out
+byte-for-byte looking like the original: no error, no warning, no clue in the log, and the
+full generation time spent. Measured on one 5.2 s shot — at 141 frames nothing changed, at
+124 frames the same shot came out perfect with every other parameter identical.
+
+Cap it. `batch_shots.py` refuses to go past 124 and trims the shot instead, printing a
+warning. If a shot genuinely needs to be longer, cut it in two.
+
+This one cost twice, because the first time it was misdiagnosed: a manual retry that
+changed `--upscale-mp` *and* the frame count fixed it, and the fix was credited to
+`--upscale-mp`. It was the frame count. **When a retry changes two things, it has proved
+nothing.**
+
+Beware of trusting a difference metric here. A mean-absolute-difference against the source
+read *higher* on the failed shot (20.0) than on shots where the swap worked (8.9, 10.6) —
+global re-encode shift, not a changed face. The metric detects change, not the right
+change. Only look at the frames.
+
 ## Inpainting trade-offs you cannot dodge
 
-- **`--denoise 1.0` destroys lip sync.** It repaints the masked region from scratch every
-  frame, so the mouth is invented rather than inherited. **0.85** keeps the per-frame
-  structure — mouth, eyes, blinks — and identity still changes. This is the single most
-  important parameter for talking shots.
-- **Beard density comes from `--upscale-mp`, not from mask size.** Growing the mask does
-  nothing (measured: expand 18 and 45 identical, and 80 vs 140 identical). Generating the
-  crop at higher resolution (`--upscale-mp 1.4`) is what produces real facial hair texture.
-- **Mask the face, not the whole head, to keep the subject's hair.** A whole-head mask
-  replaces the hair with the reference's, loses the original silhouette, and at large
-  `--expand` it reaches the collar and **imports the reference's wardrobe**.
-- **`--expand` on a face mask controls how far the beard spreads.** 25 gives a goatee, 40
-  fills the cheeks and jaw without touching the neck.
+- **`--denoise` is the identity/performance dial, and it belongs per character.**
+  - `1.0` destroys lip sync: the masked region is repainted from scratch every frame, so
+    the mouth is invented rather than inherited.
+  - `0.85` keeps per-frame structure — mouth, eyes, blinks — while identity still changes.
+    The default for anyone who talks on screen.
+  - `0.95` is needed when the original has a **strong feature competing with the
+    reference**. A character with a big grey beard came out grey at 0.85 (only the
+    moustache went dark) and correctly black at 0.95. Neither a bigger mask (`expand` 25 →
+    50) nor three different detection texts moved it; only denoise did.
+- **Beard density comes from the mask, not from `--upscale-mp`.** *(This corrects an
+  earlier claim in these notes.)* The two were changed together in one test and the credit
+  went to the wrong one. Re-measured separately: at `--upscale-mp` 0.8 and 1.4 the beard is
+  identical. What produces a full beard is a detection text whose mask actually covers the
+  jaw and chin. Growing `--expand` alone does nothing (18 vs 45 identical, 80 vs 140
+  identical).
+- **Include the neck in the detection text, not just the face.** A face-only mask stops at
+  the jaw: the model paints a beard down to the mask edge and the original pale neck shows
+  below it, so the head reads as pasted on. Adding the neck moves the seam somewhere nobody
+  looks. Measured: `"the face, the jaw and the beard of a person"` gave 4.0% coverage,
+  `"the head and the neck of a person, including the chin, the jaw and the throat"` gave
+  11.1% on the same shot.
+- **A head mask replaces the subject's hair**, which is sometimes the point and sometimes
+  a loss — it costs the original silhouette. At large `--expand` it also reaches the collar
+  and **imports the reference image's wardrobe**. At `denoise 0.85` the hair's shape and
+  length survive even inside the mask; only its colour shifts toward the reference.
+- **A head mask swallows a hat.** For a character in a hat, keep the detection tight
+  (`"the face and the beard of a person"`) or the model repaints the hat too.
+- **Keep every parameter identical across the shots of one scene.** A value tuned per shot
+  gives each shot a different finish, and mismatched finish is more visible in an edit than
+  any single shot's imperfection.
 - **Two people: one pass each.** With one mask over two faces the model blends features.
   Spatial anchoring by prompt does not fix it.
+
+## Replacing someone across a whole dialogue scene
+
+Two problems appear that never show up in a single shot.
+
+### 1. The model lip-syncs whoever is on screen, even the listener
+
+H3's lip sync is native and it is driven by **the audio baked into the latent**, not by who
+is speaking. Point it at a reaction shot and it will put the other character's dialogue in
+your character's mouth.
+
+`audio_mode` does not save you: `keep`, `regenerate` and `follow mask` all leave the audio
+conditioning the picture. There is no "ignore audio" mode.
+
+**Fix it at the source: feed the swap a silent audio track, and re-attach the real audio
+afterwards.** `VHS_LoadVideo` requires an audio stream, so it must be silence rather than
+absence:
+
+```
+ffmpeg -i shot.mp4 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 \
+       -map 0:v -map 1:a -c:v copy -c:a aac -shortest shot_silent.mp4
+# ... swap on shot_silent.mp4 ...
+ffmpeg -i generated.mp4 -i shot.mp4 -map 0:v -map 1:a -c:v copy -c:a aac final.mp4
+```
+
+Fighting this with prompt wording is a trap. A strong instruction ("his mouth stays CLOSED
+and still") does work — but it also closes a mouth that should hang open in surprise, and
+flattens the expression. Softening it to preserve the performance then loses the lip-sync
+fight again. Silent audio removes the conflict instead of balancing it.
+
+Classify each shot from the **original footage**, not from the script: does this character's
+mouth articulate, or not? Three modes are enough — *speaking*, *silent and listening*,
+*reacting without speech* — and only the first keeps its real audio going in.
+
+### 2. Identity drifts from shot to shot
+
+Segmentation decides **where** the model paints, not **who** it paints. With frontal stills
+as the only reference, every non-frontal angle gets invented, differently each time.
+
+A **video reference** fixes it: generate one turnaround of your character once — a slow
+360° of the head against a plain background, even lighting, ~5 s — and pass that same clip
+as `--ref-video` on every shot. It carries identity through angles the way stills cannot.
+
+The catch, measured: a turnaround shows the face under changing light, so as a **colour**
+signal it is weaker than one well-lit still. On a character whose original had a strong
+competing feature (that grey beard again), the video reference brought the grey back while
+stills at `denoise 0.95` did not. **Video reference for consistency where the original does
+not compete; stills where it does.** It is a per-character choice, and it costs about 60%
+more time per shot.
 
 ## Pose transfer (ControlNet)
 

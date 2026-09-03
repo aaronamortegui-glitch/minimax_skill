@@ -117,6 +117,17 @@ with two faces under one mask the model blends them.
 This is the route that keeps an existing look intact: costume, hair, lighting, grade and
 depth of field all survive because they are never regenerated.
 
+Three things decide whether it works, all covered in
+[references/comfyui.md](references/comfyui.md):
+
+- **Stay under 124 frames.** Past that the swap silently does not apply — the shot comes
+  out identical to the original, with no error and the full generation time spent.
+- **`--denoise 0.85`, not 1.0**, or lip sync is destroyed. Raise to 0.95 only when the
+  original has a strong feature fighting your reference.
+- **Feed silent audio for anyone who is not the one speaking.** The model lip-syncs whoever
+  is on screen to whatever is on the soundtrack, so a listener gets the other character's
+  dialogue in their mouth. Re-attach the real audio after generating.
+
 ### 4. My character performing another video's motion
 
 ```
