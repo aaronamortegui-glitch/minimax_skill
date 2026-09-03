@@ -18,6 +18,7 @@ docs promise.
 - putting your character through another video's motion
 - pose transfer with ControlNet
 - the real limits of each, and what it costs in wall-clock time
+- what hardware you need, from 8 GB cards up, and what renting one costs
 
 ## Install
 
@@ -66,6 +67,12 @@ for shots that fall between grid values.
 **1080p is not available.** The open model runs at 768 px short side, native 1344x768 —
 which is 1.75, not 16:9. Generate native and crop. The 2K upscale is a paid-platform
 component not in the open release.
+
+**System RAM matters as much as VRAM.** The weights total ~42 GB and never fit on a
+consumer card; ComfyUI streams them between VRAM and RAM. A 24 GB card with 16 GB of RAM is
+slower than a 12 GB card with 48 GB. Rule of thumb: 2-3x the VRAM in RAM. See
+[references/hardware.md](references/hardware.md) for the tiers, measured times, and GPU
+rental costs (~$0.07-0.16 per 8 s clip on a rented 4090).
 
 **It hangs instead of erroring.** Past roughly 10 s of output with a video reference, VRAM
 saturates and ComfyUI swaps weights forever without failing. Watch for `0/8` after five

@@ -52,6 +52,10 @@ upscale. That is why the ceiling is 768p.
 **Voice cloning is undocumented** for open H3-Base, but works through the audio reference
 route in ComfyUI. Verified.
 
+**Hardware: 24 GB VRAM + 64 GB RAM is the practical target.** Smaller cards work with
+heavier offload and lower resolution; see section 5. Renting a 4090 costs roughly
+$0.07-0.16 per 8 s clip.
+
 ---
 
 ## 3. The two routes
@@ -142,9 +146,27 @@ block — see section 7.
 
 ---
 
-## 5. Cost (measured on 1x RTX 5090 Laptop 24 GB, 64 GB RAM)
+## 5. Cost and hardware
 
-With `--steps 8-10`:
+**What card you need.** The weights total ~42 GB, so they never fit. ComfyUI streams them
+between VRAM and system RAM as it samples, which means **VRAM decides how fast and system
+RAM decides whether it runs at all**. Ask for 2-3x the VRAM in RAM.
+
+| VRAM | RAM | What you get | 5 s clip |
+|---|---|---|---|
+| 6-8 GB | 16 GB+ | 4-bit variants only, mushy detail | 10-15 min |
+| 12-16 GB | **32 GB+** | Works with heavy offload, 480p territory | ~6 min at 480p |
+| **24 GB** | **64 GB** | **The practical target. Full 768p** | **10 min at 768p** |
+| 32 GB+ | 64 GB+ | Headroom for longer clips and LoRA training | a few min |
+
+**Renting is cheap.** An RTX 4090 runs $0.34-0.74/hr, which is **about $0.07-0.16 per 8 s
+clip**. What costs money is the ~42 GB of weights you have to pull down first — use a
+persistent volume so you pay that once.
+
+Full tiers, per-step costs, tuning for smaller cards and provider comparison:
+[references/hardware.md](references/hardware.md).
+
+**Times measured on 1x RTX 5090 Laptop 24 GB, 64 GB RAM**, with `--steps 8-10`:
 
 | Output | Route | Time |
 |---|---|---|
@@ -262,5 +284,7 @@ was nothing there to replace.
 
 - [references/comfyui.md](references/comfyui.md) — models, nodes, parameters, wiring traps,
   and everything measured and broken along the way.
+- [references/hardware.md](references/hardware.md) — VRAM tiers, measured times, how to get
+  more out of a smaller card, and renting a GPU.
 - [references/standalone-app.md](references/standalone-app.md) — building the app without
   ComfyUI: frameworks, API, hardware.
