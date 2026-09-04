@@ -73,6 +73,24 @@ In the API the autogrow inputs use nested names, zero-indexed:
 `"ref_video_audios.ref_video_audio_0"`.
 Dynamic combos likewise: `"mode": "tracked"` plus `"mode.crop_scale": 1.75`.
 
+## The two methods, side by side
+
+![Segmentation vs recreation](images/method-comparison.png)
+
+Both rows are the same job — put a different man into existing footage — done the two ways.
+The third column is the amplified difference against the source plate, and it is the whole
+argument: with segmentation the frame is black except one bright patch where the face is;
+with recreation it is white everywhere, because every pixel was generated anew.
+
+Read the bottom band as the decision. In short: **segmentation when the plate must survive,
+recreation when the mask cannot hold.**
+
+One consequence of recreation that the figure shows and that is easy to miss until you are
+in the edit: **the output does not keep the source aspect ratio.** A 2.5:1 plate comes back
+at the model's native 1.78:1, with picture invented above and below and the horizontal
+composition shifted. Plan on cropping back, and do not expect a frame-for-frame match with
+the neighbouring shots.
+
 ## Recasting a live-action shot by recreation (`ref2va`)
 
 Feeding a shot as `<Video 1>` and a character as `<Picture 1>` recreates the shot with a new

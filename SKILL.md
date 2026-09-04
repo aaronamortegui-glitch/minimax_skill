@@ -91,6 +91,10 @@ what such an app has to solve.
 
 ## 4. Recipes
 
+**Which recipe for footage you already have** — recipe 3 (segmentation) or recipe 4
+(recreation)? The two compared frame by frame, with the decision criteria and the limits of
+each: [references/comfyui.md](references/comfyui.md) → *The two methods, side by side*.
+
 The scripts talk HTTP to a running ComfyUI. Put them in `<portable>/h3/` and run them with
 the portable install's python: `cd <portable>\h3` then `..\python_embeded\python.exe <script> ...`
 
