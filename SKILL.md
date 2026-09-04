@@ -155,6 +155,17 @@ original, use recipe 3.
 not enough and the model keeps the original face. Then you need a reference-authority
 block — see section 7.
 
+**Before re-engineering the prompt, re-roll the seed.** On a hard beat — a face that is
+small, dim or behind glass — five different prompt configurations kept the original face
+and the *same* configuration at another seed fixed it on the first try. Three failures in a
+row look like a broken method and are not proof of one.
+
+**Pass separate close-up crops, not one multi-view sheet**, and do not add a video reference
+of the character on top of the scene video: the two video signals compete and identity
+loses. Full write-up in
+[references/comfyui.md](references/comfyui.md) → *Recasting a live-action shot by
+recreation*.
+
 ---
 
 ## 5. Cost and hardware

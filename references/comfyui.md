@@ -73,6 +73,98 @@ In the API the autogrow inputs use nested names, zero-indexed:
 `"ref_video_audios.ref_video_audio_0"`.
 Dynamic combos likewise: `"mode": "tracked"` plus `"mode.crop_scale": 1.75`.
 
+## Recasting a live-action shot by recreation (`ref2va`)
+
+Feeding a shot as `<Video 1>` and a character as `<Picture 1>` recreates the shot with a new
+person in it. It is much cheaper than inpainting and needs no mask, but it comes with one
+property you cannot argue away: **every pixel is regenerated**. The shot is a *reference*,
+not a locked plate. You get a very close plano — camera move, blocking and action survive —
+but the background, the extras and the grain are reinterpreted. If the original must stay
+intact pixel for pixel, that is inpainting, not this.
+
+Five things decide whether the recast lands, in order of how much they cost to get wrong.
+
+### 1. The seed is a parameter, not a detail
+
+On the hard beats, **re-roll before you re-engineer**. Measured on one shot where the
+character had to appear behind the glass of a phone booth, small and dim: five different
+prompt configurations all kept the original face — simple instruction, added negation,
+full authority framing, one multi-view sheet, three separate crops. The *same* configuration
+at two other seeds put the right man in the booth on the first try.
+
+The corollary is a trap worth naming: three failures in a row look exactly like a broken
+method. They are not proof of one. Change the seed twice before you conclude anything about
+the approach, and if you do change the approach, change **one** thing.
+
+### 2. A positive-only instruction can be satisfied by changing nothing
+
+"Replace the man in `<Video 1>` with the man in `<Picture 1>`" is an assertion the model can
+honour by leaving the frame alone — and on a low-detail face, that is what it does. It needs
+the original ruled **out**:
+
+```
+<Video 1> defines ONLY the scene: the camera move, the framing, the street, the other
+pedestrians, the grade and the action. It does NOT define the face.
+The clean-shaven young man in it is REPLACED and must not appear.
+...
+Never keep the original clean-shaven face.
+```
+
+That framing transfers identity reliably. The price is looser shot fidelity — it will
+re-stage a beat rather than match it frame for frame. A "locked, frame-for-frame" prompt
+inverts the trade: faithful staging, original face with your features painted on top.
+
+### 3. Stills carry identity — a video reference of the character does not
+
+When the scene already arrives as `<Video 1>`, adding a turnaround clip of the character as a
+second video reference makes things **worse**, not better: the two video signals compete, the
+identity one loses, and shot fidelity degrades as well. Measured: two video references split
+the shot in half, at ~4 s in one test and ~5.5 s in another, with the character changing at
+the seam.
+
+Reserve the character turnaround for **inpainting**, where the scene is a plate rather than a
+reference and nothing competes with it. For recreation, use stills.
+
+### 4. Individual close-up crops beat a sheet, and a sheet can get drawn into the frame
+
+Give the model **separate images**, each a head-and-shoulders crop of one view — front,
+profile, three-quarter — as `<Picture 1>`, `<Picture 2>`, `<Picture 3>`. A single multi-view
+sheet is one image in which each face occupies maybe 15% of the area, so the face the model
+receives is small, and a small reference face cannot replace a small shot face.
+
+A collage assembled from *video frames*, with their varied lighting and backgrounds, is worse
+still: in one run the model rendered the six-panel sheet **inside the shot**, as a picture
+within the picture. A clean studio sheet does not do this, but cut it into panels anyway.
+
+### 5. Name every feature you need, including the hair
+
+The identity clause has to cover whatever the original has strongly. "Short dark hair" does
+not contradict a protagonist whose hair is dark and swept back, so the model keeps his — and
+the shot reads as the wrong person. Say the shape, and say what it is not:
+
+```
+short black hair cropped close at the sides and receding at the temples
+...
+This is his face AND his hair in every frame. His hair is short and cropped, never long
+and never swept back over the ears.
+```
+
+## Check the original before you call it a defect
+
+Two mistakes that cost real GPU hours, both from reviewing the output without the plate next
+to it:
+
+- **An extra read as a failed replacement.** A man in sunglasses standing by the phone booth
+  looked like the swap had missed. He is in the original footage. Nothing had failed.
+- **A protagonist who is not in frame yet.** The first 4.5 s of one 8 s shot contain no
+  protagonist at all in the original; he walks in afterwards. There was nothing there to
+  replace.
+
+Also check what resolution the plate actually is. All the cuts in one project turned out to
+be **640×266** — a face behind glass at that size is a smudge, and the model will invent
+whoever is in it. And when a source file looks promising because it is 1080p, confirm it is
+the original and not an earlier render of your own work.
+
 ## Inpainting — the bug that cost two days
 
 `NKDAVLatent.latent_mask` must receive the **`latent_mask` output of `NKDMaskOps`, which is
@@ -290,6 +382,13 @@ Chunking introduces seams; only do it if it genuinely will not fit.
 **With a video reference the ceiling is between 10.1 s (works) and 16.5 s (hangs).**
 
 ## Node traps already paid for
+
+- **`tile=` silently drops rows when the inputs differ in size.** Every comparison sheet in
+  this workflow needs `scale=W:H:force_original_aspect_ratio=decrease,pad=W:H:...` on each
+  frame first, or half the grid comes back black and you review the wrong thing.
+- **A difference metric detects change, not the *right* change.** A mean-absolute-difference
+  against the source read *higher* on a shot where the swap silently did nothing (20.0) than
+  on shots where it worked (8.9, 10.6) — global re-encode shift. Look at the frames.
 
 - `CreateVideo` without audio + `SaveVideo` **blows up** with libx264.
 - The embedded python's `hf` CLI **does not work** (missing `venv`). Use
