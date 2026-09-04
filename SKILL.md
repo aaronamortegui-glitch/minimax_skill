@@ -65,6 +65,12 @@ $0.07-0.16 per 8 s clip.
 Start here, always. Launch with `scripts/START_COMFY_H3_FAST.bat`; see
 [references/comfyui.md](references/comfyui.md) for detail.
 
+**Setting it up from scratch:** [references/install.md](references/install.md) — an ordered
+checklist with a verification step after each stage. Short version: ComfyUI portable on
+torch cu130, ComfyUI 0.34+ (H3 and SAM3 are built in, not node packs), ~60 GB of weights
+from [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3), and exactly five
+custom node packs — only two of which the basic route needs.
+
 ### Route B — standalone app, no ComfyUI
 
 **Possible and officially documented, but it needs real hardware:**
