@@ -166,6 +166,12 @@ loses. Full write-up in
 [references/comfyui.md](references/comfyui.md) → *Recasting a live-action shot by
 recreation*.
 
+**Cut on the original shot boundaries, not where the face becomes legible.** A shot that
+begins mid-move gives the model an entrance it cannot explain, and the move is lost; cut
+whole, it is inherited. Cut after the closing gesture completes, too. See
+[references/comfyui.md](references/comfyui.md) → *Where you cut the shot decides what the
+model can do*.
+
 ---
 
 ## 5. Cost and hardware

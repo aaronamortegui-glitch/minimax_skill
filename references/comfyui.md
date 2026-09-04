@@ -149,6 +149,54 @@ This is his face AND his hair in every frame. His hair is short and cropped, nev
 and never swept back over the ears.
 ```
 
+## Where you cut the shot decides what the model can do
+
+Cutting at the point where the character becomes recognisable is the intuitive choice and it
+is usually wrong. **Cut on the original shot boundaries.**
+
+A shot that begins mid-move hands the model an entrance it cannot explain. One phone-booth
+shot was cut from the moment the face was legible; the real shot starts 2.9 s earlier as an
+almost-black macro of the telephone earpiece and pulls back through the hand, the chin and
+finally the profile. Cut short, the recreation had no move to inherit and opened on a face.
+Cut whole, it reproduced the entire pull-back and the character was right at every stage of
+it — including his reflection in the glass.
+
+The same rule at the other end: **cut after the gesture completes**, not on the frame where
+it reads. A hang-up, a head lifting, a hand arriving at the face — if the last beat is
+clipped, the shot has no ending and no seed will invent one.
+
+Three practical consequences:
+
+- **Find the real boundary.** Sample the source every 0.2 s across the suspected cut and look;
+  a scene-change filter misses cuts into darkness, and this kind of shot often opens on black.
+- **Choose the length backwards from the out-point.** The out-point is fixed by the next
+  shot, and the duration must land on the frame grid, so the in-point is
+  `out − (grid frames / 24)`. For a 6.58 s shot (158 frames) ending at 54.00, that is 47.42 —
+  which then has to fall *after* the real cut. If it does not, step down a grid rung.
+- **Describe the whole move in the prompt**, beat by beat, including the part with no face in
+  it. The frames before the subject appears are not filler; they are what the model needs in
+  order to arrive at the right framing.
+
+Note that a shot opening on black or on a macro defeats a first-and-last-frame check — the
+first frame has no subject to verify. Check inside the shot instead.
+
+## Splicing a swapped piece back into a longer plate
+
+When only a second of a long shot needs replacing, generate that second and splice it. Two
+things will bite:
+
+- **Do not assume two cuts of the same moment share an origin.** Sub-cuts made in separate
+  sessions start at different frames. Measure it: `psnr` between the candidate offset of the
+  parent and the piece gives ~46 dB when aligned and ~26 dB one frame off. Scan a few
+  offsets and take the peak.
+- **Better still, cut the piece from the parent you are splicing back into**, so alignment is
+  guaranteed by construction rather than by measurement. Re-derive any mask coordinates on
+  that clip — the framing may match while the starting frame does not.
+
+Verify the finished splice against the plate the same way: a correct assembly of a shot with
+two small replaced regions reads around 39 dB over the whole shot. A low number means a
+misalignment, not a strong swap.
+
 ## Check the original before you call it a defect
 
 Two mistakes that cost real GPU hours, both from reviewing the output without the plate next
